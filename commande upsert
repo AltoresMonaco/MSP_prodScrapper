@@ -1,0 +1,15 @@
+python upsert.py --sitemaps https://monservicepublic.gouv.mc/sitemap-1.xml https://monservicepublic.gouv.mc/sitemap-2.xml https://monservicepublic.gouv.mc/sitemap-3.xml https://monservicepublic.gouv.mc/en/sitemap-1.xml https://monservicepublic.gouv.mc/en/sitemap-2.xml https://monservicepublic.gouv.mc/en/sitemap-3.xml  --output ./output 
+
+
+python run.py \
+    --sitemaps https://monservicepublic.gouv.mc/sitemap-1.xml https://monservicepublic.gouv.mc/sitemap-2.xml https://monservicepublic.gouv.mc/sitemap-3.xml https://monservicepublic.gouv.mc/en/sitemap-1.xml https://monservicepublic.gouv.mc/en/sitemap-2.xml https://monservicepublic.gouv.mc/en/sitemap-3.xml  \
+    --output ./output
+    --skip-scraping
+
+    python run.py --sitemaps https://monservicepublic.gouv.mc/sitemap-1.xml https://monservicepublic.gouv.mc/sitemap-2.xml https://monservicepublic.gouv.mc/sitemap-3.xml https://monservicepublic.gouv.mc/en/sitemap-1.xml https://monservicepublic.gouv.mc/en/sitemap-2.xml https://monservicepublic.gouv.mc/en/sitemap-3.xml --output ./output  --skip-scraping
+
+
+python run.py --sitemaps https://monservicepublic.gouv.mc/sitemap-1.xml https://monservicepublic.gouv.mc/sitemap-2.xml https://monservicepublic.gouv.mc/sitemap-3.xml https://monservicepublic.gouv.mc/en/sitemap-1.xml https://monservicepublic.gouv.mc/en/sitemap-2.xml https://monservicepublic.gouv.mc/en/sitemap-3.xml --output ./output
+
+
+source venv/bin/activate && python3 run.py --sitemaps https://monservicepublic.gouv.mc/sitemap-1.xml https://monservicepublic.gouv.mc/sitemap-2.xml https://monservicepublic.gouv.mc/sitemap-3.xml https://monservicepublic.gouv.mc/sitemap-4.xml https://monservicepublic.gouv.mc/en/sitemap-1.xml https://monservicepublic.gouv.mc/en/sitemap-2.xml https://monservicepublic.gouv.mc/en/sitemap-3.xml https://monservicepublic.gouv.mc/en/sitemap-4.xml --output output --thematique monservicepublic --workers 8

@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+
+# Virtual env
+venv/
+
+# IDE
+.vscode/
+.idea/
+
+# Local env
+.env
+
+# Outputs
+output/
+api_jobs/
+
+# Playwright
+playwright/.cache/
+
+# Generated/test artifacts
+*test_output_*.html
+annuaire_services.html
+annuaire_services.md
