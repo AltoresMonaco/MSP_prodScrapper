@@ -7,6 +7,7 @@ import sys
 import uuid
 import time
 from typing import List, Dict, Any
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from bs4 import BeautifulSoup
 from tqdm import tqdm
@@ -31,6 +32,8 @@ OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 PINECONE_API_KEY = os.getenv('PINECONE_API_KEY')
 PINECONE_ENV = os.getenv('PINECONE_ENV')  # Exemple : "us-east1-gcp"
 PINECONE_INDEX_NAME = os.getenv('PINECONE_INDEX_NAME')
+WEBHOOK_URL = os.getenv('SCRAPER_WEBHOOK_URL', 'https://n8n.altores.app/webhook/api-end-scrapper')
+WEBHOOK_BEARER = os.getenv('SCRAPER_WEBHOOK_BEARER')
 
 if not all([OPENAI_API_KEY, PINECONE_API_KEY, PINECONE_ENV, PINECONE_INDEX_NAME]):
     logger.error("Une ou plusieurs variables d'environnement sont manquantes. Vérifiez votre fichier .env.")
@@ -58,6 +61,44 @@ try:
 except Exception as e:
     logger.error(f"Erreur lors de l'initialisation de Pinecone: {e}")
     sys.exit(1)
+
+
+def send_webhook_report(payload: Dict[str, Any], method: str = "GET") -> None:
+    """Envoie un rapport au webhook configuré. Par défaut via GET + Authorization Bearer."""
+    try:
+        import requests
+        headers = {}
+        if WEBHOOK_BEARER:
+            headers["Authorization"] = f"Bearer {WEBHOOK_BEARER}"
+
+        if method.upper() == "GET":
+            metrics = payload.get("metrics", {})
+            params = {
+                "status": payload.get("status"),
+                "project": payload.get("project"),
+                "pinecone_index": payload.get("pinecone_index"),
+                "pages_scraped": metrics.get("pages_scraped"),
+                "documents_chunks": metrics.get("documents_chunks"),
+                "vectors_upserted": metrics.get("vectors_upserted"),
+                "unique_namespaces": metrics.get("unique_namespaces"),
+                "errors_count": len(payload.get("errors", [])),
+                "duration_seconds": payload.get("duration_seconds"),
+                "started_at": payload.get("started_at"),
+                "ended_at": payload.get("ended_at"),
+            }
+            response = requests.get(WEBHOOK_URL, headers=headers, params=params, timeout=20)
+        else:
+            response = requests.post(WEBHOOK_URL, headers=headers, json=payload, timeout=20)
+        try:
+            detail = response.text[:500]
+        except Exception:
+            detail = ''
+        if 200 <= response.status_code < 300:
+            logger.info(f"Webhook envoyé avec succès (status={response.status_code}).")
+        else:
+            logger.warning(f"Webhook répondu avec un statut non 2xx (status={response.status_code}). Détail: {detail}")
+    except Exception as e:
+        logger.error(f"Erreur lors de l'envoi du webhook: {e}")
 
 def enhanced_html_to_text(html_content, base_url="https://monservicepublic.gouv.mc"):
     """
@@ -372,6 +413,14 @@ def run_embedding(base_folder, fixed_thematique, skip_cleanup=False):
         logger.error(f"Le dossier '{base_folder}' n'existe pas.")
         return
     
+    start_time = time.time()
+    start_iso = datetime.now(timezone.utc).isoformat()
+    errors: List[str] = []
+
+    # Compter les pages sources (fichiers scrappés)
+    pages_paths = glob.glob(os.path.join(base_folder, '**', '*.txt'), recursive=True)
+    total_pages = len(pages_paths)
+
     logger.info("Chargement et découpage des documents avec conversion HTML->texte enrichi...")
     documents = load_and_split_documents(base_folder, fixed_thematique)
     
@@ -380,6 +429,8 @@ def run_embedding(base_folder, fixed_thematique, skip_cleanup=False):
     
     # Regrouper les documents par namespace
     namespaces = set(doc.metadata["namespace"] for doc in documents)
+    per_namespace_stats: Dict[str, Dict[str, int]] = {}
+    total_vectors_upserted = 0
     for ns in namespaces:
         docs_in_ns = [doc for doc in documents if doc.metadata["namespace"] == ns]
         if not docs_in_ns:
@@ -408,17 +459,49 @@ def run_embedding(base_folder, fixed_thematique, skip_cleanup=False):
             vectors = create_pinecone_vectors(batch, embeddings_model)
             
             # Insérer dans Pinecone
-            upsert_to_pinecone(index, vectors, ns)
+            try:
+                upsert_to_pinecone(index, vectors, ns)
+            except Exception as e:
+                msg = f"Erreur d'upsert namespace='{ns}': {e}"
+                logger.error(msg)
+                errors.append(msg)
             
             total_processed += len(batch)
+            total_vectors_upserted += len(batch)
             logger.info(f"Progression: {total_processed}/{len(docs_in_ns)} documents traités")
             
             # Petite pause pour éviter rate limiting
             time.sleep(0.5)
         
         logger.info(f"Total de {total_processed} documents insérés dans le namespace '{ns}'.")
+        per_namespace_stats[ns] = {
+            "documents_chunks": len(docs_in_ns),
+            "vectors_upserted": total_processed,
+        }
     
     logger.info("Traitement des embeddings terminé.")
+
+    # Rapport webhook
+    end_time = time.time()
+    end_iso = datetime.now(timezone.utc).isoformat()
+    payload = {
+        "status": "success" if not errors else "completed_with_errors",
+        "project": "MSP_prodScrapper",
+        "pinecone_index": PINECONE_INDEX_NAME,
+        "metrics": {
+            "pages_scraped": total_pages,
+            "documents_chunks": len(documents),
+            "vectors_upserted": total_vectors_upserted,
+            "namespaces": per_namespace_stats,
+            "unique_namespaces": len(per_namespace_stats),
+        },
+        "errors": errors,
+        "started_at": start_iso,
+        "ended_at": end_iso,
+        "duration_seconds": round(end_time - start_time, 2),
+    }
+    logger.info(f"Envoi du rapport de fin au webhook: {WEBHOOK_URL}")
+    send_webhook_report(payload, method="GET")
 
 if __name__ == "__main__":
     if len(sys.argv) > 2:
